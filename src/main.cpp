@@ -65,6 +65,7 @@ Eigen::VectorXd polyfit(Eigen::VectorXd xvals, Eigen::VectorXd yvals,
   return result;
 }
 
+
 int main() {
   uWS::Hub h;
 
@@ -98,13 +99,67 @@ int main() {
           * Both are in between [-1, 1].
           *
           */
-          double steer_value;
-          double throttle_value;
+
+          // Convert from map coordinate system to vehicle coordinate system
+          Eigen::VectorXd car_ptsx(ptsx.size());
+          Eigen::VectorXd car_ptsy(ptsy.size());
+
+          //Display the waypoints/reference line
+          vector<double> next_x_vals;
+          vector<double> next_y_vals;
+
+          for (int i = 0; i < ptsx.size(); i++) {
+            // Common calculations
+            double cos_psi = std::cos(psi);
+            double sin_psi = std::sin(psi);
+
+            double dx = ptsx[i] - px;
+            double dy = ptsy[i] - py;
+
+            // Transform coordinate space. Translate -> Rotate
+            double car_x =  dx*cos_psi + dy*sin_psi;
+            double car_y = -dx*sin_psi + dy*cos_psi;
+            car_ptsx[i] = car_x;
+            next_x_vals.push_back(car_x);
+            car_ptsy[i] = car_y;
+            next_y_vals.push_back(car_y);
+          }
+
+
+          // apply control latency
+          double latency = 0.1;
+          for(int i=0; i<car_ptsx.size(); i++){
+            // subtract the distance the car will
+            // travel from the x values.
+            // This is a basic model that neglects
+            // steering input.
+            car_ptsx[i] -= v*latency;
+          }
+
+          // Fit curve to way points
+          auto coeffs = polyfit(car_ptsx, car_ptsy, 3) ;
+          // Calculate the cross track error
+          double cte = polyeval(coeffs, 0) - py;
+//          double cte = polyeval(coeffs, 0);
+          // Calculate the orientation error
+          double epsi = psi - atan(coeffs[1]);
+
+          Eigen::VectorXd state(6);
+//          state << px, py, psi, v, cte, epsi;
+          state << 0, 0, 0, v, cte, epsi;
+
+          auto vars = mpc.Solve(state, coeffs);
+
+          double steer_value = vars[6];
+          double throttle_value = vars[7];
+
+//          double steer_value;
+//          double throttle_value;
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          msgJson["steering_angle"] = steer_value;
+          msgJson["steering_angle"] = steer_value/deg2rad(25);
           msgJson["throttle"] = throttle_value;
 
           //Display the MPC predicted trajectory 
@@ -117,10 +172,6 @@ int main() {
           msgJson["mpc_x"] = mpc_x_vals;
           msgJson["mpc_y"] = mpc_y_vals;
 
-          //Display the waypoints/reference line
-          vector<double> next_x_vals;
-          vector<double> next_y_vals;
-
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Yellow line
 
@@ -132,7 +183,7 @@ int main() {
           std::cout << msg << std::endl;
           // Latency
           // The purpose is to mimic real driving conditions where
-          // the car does actuate the commands instantly.
+          // the car does not actuate the commands instantly.
           //
           // Feel free to play around with this value but should be to drive
           // around the track with 100ms latency.
