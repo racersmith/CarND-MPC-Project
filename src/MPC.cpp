@@ -24,7 +24,7 @@ const double Lf = 2.67;
 // Velocity Target
 // Goal is to remove this and establish a model to maximize
 // actuations within the performance envelope
-double ref_v = 5.0;
+double ref_v = 30.0;
 
 // Variable position in solver vector
 size_t x_start = 0;
@@ -61,21 +61,21 @@ class FG_eval {
 
     // CTE, Heading and Velocity targets
     for (int t = 0; t < N; t++) {
-      fg[0] += CppAD::pow(vars[cte_start + t], 2);
-      fg[0] += CppAD::pow(vars[epsi_start + t], 2);
-      fg[0] += CppAD::pow(vars[v_start + t] - ref_v, 2);
+      fg[0] += 1 * CppAD::pow(vars[cte_start + t], 2);
+      fg[0] += 2 * CppAD::pow(vars[epsi_start + t], 2);
+      fg[0] += 5 * CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize use of actuators
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += CppAD::pow(vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t], 2);
+      fg[0] += 50 * CppAD::pow(vars[delta_start + t], 2);
+      fg[0] += 50 * CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize jerk
     for (int t = 0; t < N - 2; t++) {
-      fg[0] += CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
-      fg[0] += CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+      fg[0] += 50 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += 50 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
 
@@ -120,11 +120,12 @@ class FG_eval {
       //
       fg[1 + x_start + t] = x1 - (x0 + v0 * CppAD::cos(psi0) * dt);
       fg[1 + y_start + t] = y1 - (y0 + v0 * CppAD::sin(psi0) * dt);
-      fg[1 + psi_start + t] = psi1 - (psi0 - v0 * delta0/Lf * dt);
+      fg[1 + psi_start + t] = psi1 - (psi0 + v0 * delta0/Lf * dt);
       fg[1 + v_start + t] = v1 - (v0 + a0 * dt);
 
       // Target position from path fit
-      AD<double> f0 = coeffs[1] * x0 + coeffs[0];
+//      AD<double> f0 = coeffs[1] * x0 + coeffs[0];
+      AD<double> f0 = coeffs[3] * x0*x0*x0 + coeffs[2] * x0*x0 + coeffs[1] * x0 + coeffs[0];
       fg[1 + cte_start + t] = cte1 - ((f0 - y0) + v0 * CppAD::sin(epsi0) * dt);
 
       // Target heading from path fit
