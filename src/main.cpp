@@ -92,6 +92,8 @@ int main() {
           double py = j[1]["y"];
           double psi = j[1]["psi"];
           double v = j[1]["speed"];
+          double delta = j[1]["steering_angle"];
+          double accel = j[1]["throttle"];
 
           /*
           * TODO: Calculate steering angle and throttle using MPC.
@@ -107,6 +109,16 @@ int main() {
           //Display the waypoints/reference line
           vector<double> next_x_vals;
           vector<double> next_y_vals;
+
+
+          // apply 100ms control latency
+          double latency = 100.0/1000.0;
+          px += v * std::cos(psi) * latency;
+          py += v * std::sin(psi) * latency;
+          psi -= v * delta/2.67 * latency;
+          v += accel*latency;
+
+
 
           for (int i = 0; i < ptsx.size(); i++) {
             // Common calculations
@@ -125,24 +137,12 @@ int main() {
             next_y_vals.push_back(car_y);
           }
 
-
-          // apply control latency
-          double latency = 0.1;
-          for(int i=0; i<car_ptsx.size(); i++){
-            // subtract the distance the car will
-            // travel from the x values.
-            // This is a basic model that neglects
-            // steering input.
-            car_ptsx[i] -= v*latency;
-          }
-
           // Fit curve to way points
-          auto coeffs = polyfit(car_ptsx, car_ptsy, 3) ;
+          auto coeffs = polyfit(car_ptsx, car_ptsy, 3);
           // Calculate the cross track error
-          double cte = polyeval(coeffs, 0) - py;
-//          double cte = polyeval(coeffs, 0);
+          double cte = polyeval(coeffs, 0);
           // Calculate the orientation error
-          double epsi = psi - atan(coeffs[1]);
+          double epsi = -atan(coeffs[1]);
 
           Eigen::VectorXd state(6);
 //          state << px, py, psi, v, cte, epsi;
@@ -153,13 +153,12 @@ int main() {
           double steer_value = vars[6];
           double throttle_value = vars[7];
 
-//          double steer_value;
-//          double throttle_value;
+
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          msgJson["steering_angle"] = steer_value/deg2rad(25);
+          msgJson["steering_angle"] = -steer_value/deg2rad(25);
           msgJson["throttle"] = throttle_value;
 
           //Display the MPC predicted trajectory 
