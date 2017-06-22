@@ -78,7 +78,7 @@ int main() {
     // The 4 signifies a websocket message
     // The 2 signifies a websocket event
     string sdata = string(data).substr(0, length);
-    cout << sdata << endl;
+//    cout << sdata << endl;
     if (sdata.size() > 2 && sdata[0] == '4' && sdata[1] == '2') {
       string s = hasData(sdata);
       if (s != "") {
@@ -122,15 +122,15 @@ int main() {
 
           for (int i = 0; i < ptsx.size(); i++) {
             // Common calculations
-            double cos_psi = std::cos(psi);
-            double sin_psi = std::sin(psi);
+            double cos_psi = std::cos(-psi);
+            double sin_psi = std::sin(-psi);
 
             double dx = ptsx[i] - px;
             double dy = ptsy[i] - py;
 
             // Transform coordinate space. Translate -> Rotate
-            double car_x =  dx*cos_psi + dy*sin_psi;
-            double car_y = -dx*sin_psi + dy*cos_psi;
+            double car_x = dx*cos_psi - dy*sin_psi;
+            double car_y = dx*sin_psi + dy*cos_psi;
             car_ptsx[i] = car_x;
             next_x_vals.push_back(car_x);
             car_ptsy[i] = car_y;
@@ -139,9 +139,14 @@ int main() {
 
           // Fit curve to way points
           auto coeffs = polyfit(car_ptsx, car_ptsy, 3);
+
           // Calculate the cross track error
-          double cte = polyeval(coeffs, 0);
+          // CTE is the fit poly evaluated at 0 which is just the constant term
+          double cte = coeffs[0];
+
           // Calculate the orientation error
+          // epsi is the derivative of the fit poly evaluated at 0
+          // this reduces to just the 1st order term
           double epsi = -atan(coeffs[1]);
 
           Eigen::VectorXd state(6);
@@ -150,20 +155,29 @@ int main() {
 
           auto vars = mpc.Solve(state, coeffs);
 
-          double steer_value = vars[6];
-          double throttle_value = vars[7];
+//          double steer_value = vars[6];
+//          double throttle_value = vars[7];
+          double steer_value = vars[0];
+          double throttle_value = vars[1];
+          int mpc_points = (vars.size()-2)/2;
+
 
 
 
           json msgJson;
           // NOTE: Remember to divide by deg2rad(25) before you send the steering value back.
           // Otherwise the values will be in between [-deg2rad(25), deg2rad(25] instead of [-1, 1].
-          msgJson["steering_angle"] = -steer_value/deg2rad(25);
+          msgJson["steering_angle"] = -steer_value/(deg2rad(25));
           msgJson["throttle"] = throttle_value;
 
           //Display the MPC predicted trajectory 
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
+          for(int i=0; i<mpc_points; i++){
+            mpc_x_vals.push_back(vars[i+2]);
+            mpc_y_vals.push_back(vars[i+2+mpc_points]);
+          }
+
 
           //.. add (x,y) points to list here, points are in reference to the vehicle's coordinate system
           // the points in the simulator are connected by a Green line
@@ -179,7 +193,11 @@ int main() {
 
 
           auto msg = "42[\"steer\"," + msgJson.dump() + "]";
-          std::cout << msg << std::endl;
+//          std::cout << msg << std::endl;
+          std::cout << v << "\t"
+                    << throttle_value << "\t"
+                    << steer_value << "\t"
+                    << v*v*steer_value/2.67 << std::endl;
           // Latency
           // The purpose is to mimic real driving conditions where
           // the car does not actuate the commands instantly.
