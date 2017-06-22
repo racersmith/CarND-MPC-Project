@@ -7,7 +7,7 @@ using CppAD::AD;
 
 // TODO: Set the timestep length and duration
 size_t N = 25;
-double dt = 0.05;
+double dt = 0.1;
 
 // This value assumes the model presented in the classroom is used.
 //
@@ -24,7 +24,7 @@ const double Lf = 2.67;
 // Velocity Target
 // Goal is to remove this and establish a model to maximize
 // actuations within the performance envelope
-double ref_v = 30.0;
+double ref_v = 200.0;
 
 // Variable position in solver vector
 size_t x_start = 0;
@@ -61,21 +61,33 @@ class FG_eval {
 
     // CTE, Heading and Velocity targets
     for (int t = 0; t < N; t++) {
-      fg[0] += 1 * CppAD::pow(vars[cte_start + t], 2);
-      fg[0] += 2 * CppAD::pow(vars[epsi_start + t], 2);
-      fg[0] += 5 * CppAD::pow(vars[v_start + t] - ref_v, 2);
+//      fg[0] += 1 * CppAD::pow(vars[cte_start + t], 2);
+      fg[0] += 1 * CppAD::exp(CppAD::pow(vars[cte_start + t], 2)) - 1;
+      fg[0] += 10 * CppAD::pow(vars[epsi_start + t], 2);
+      fg[0] += 0.25 * CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
     // Minimize use of actuators
     for (int t = 0; t < N - 1; t++) {
-      fg[0] += 50 * CppAD::pow(vars[delta_start + t], 2);
-      fg[0] += 50 * CppAD::pow(vars[a_start + t], 2);
+      fg[0] += 500 * CppAD::pow(vars[delta_start + t], 2);
+      fg[0] += 10 * CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize jerk
     for (int t = 0; t < N - 2; t++) {
-      fg[0] += 50 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
-      fg[0] += 50 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+      fg[0] += 1000 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
+      fg[0] += 100 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+    }
+
+    // Maximize Acceleration
+//    for (int t = 0; t < N - 1; t++){
+//      fg[0] += 1000 * CppAD::pow(vars[a_start+t] ,2) + CppAD::pow(0.02*CppAD::pow(vars[v_start+t],2)/Lf * vars[delta_start+t] ,2) - 1;
+//      fg[0] += 10 * CppAD::pow(vars[a_start+t] - 1, 2);
+//    }
+
+    // Braking based on corner
+    for (int t = 0; t < N - 1; t++){
+      fg[0] += 0.3 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2);
     }
 
 
@@ -124,12 +136,13 @@ class FG_eval {
       fg[1 + v_start + t] = v1 - (v0 + a0 * dt);
 
       // Target position from path fit
-//      AD<double> f0 = coeffs[1] * x0 + coeffs[0];
       AD<double> f0 = coeffs[3] * x0*x0*x0 + coeffs[2] * x0*x0 + coeffs[1] * x0 + coeffs[0];
       fg[1 + cte_start + t] = cte1 - ((f0 - y0) + v0 * CppAD::sin(epsi0) * dt);
 
+
       // Target heading from path fit
-      AD<double> psides0 = CppAD::atan(coeffs[1]);
+      AD<double> df0 = 3*coeffs[3] * x0*x0 + 2*coeffs[2] * x0 + coeffs[1];
+      AD<double> psides0 = CppAD::atan(df0);
       fg[1 + epsi_start + t] = epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
     }
   }
@@ -260,19 +273,33 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
 
   // Cost
   auto cost = solution.obj_value;
-  std::cout << "Cost " << cost << std::endl;
+//  std::cout << "Cost " << cost << std::endl;
 
   // TODO: Return the first actuator values. The variables can be accessed with
   // `solution.x[i]`.
   //
   // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
   // creates a 2 element double vector.
-  return {solution.x[x_start + 1],   // 0: x
-          solution.x[y_start + 1],   // 1: y
-          solution.x[psi_start + 1], // 2: psi
-          solution.x[v_start + 1],   // 3: v
-          solution.x[cte_start + 1], // 4: cte
-          solution.x[epsi_start + 1],// 5: epsi
-          solution.x[delta_start],   // 6: delta
-          solution.x[a_start]};      // 7: a
+
+  std::vector<double> result = {solution.x[delta_start], solution.x[a_start]};
+
+  // Push predicted path x values
+  for(int i=0; i < N; i++){
+    result.push_back(solution.x[i+x_start]);
+  }
+
+  // Push predicted path y values
+  for(int i=0; i < N; i++){
+    result.push_back(solution.x[i+y_start]);
+  }
+  return result;
+
+//  return {solution.x[x_start + 1],   // 0: x
+//          solution.x[y_start + 1],   // 1: y
+//          solution.x[psi_start + 1], // 2: psi
+//          solution.x[v_start + 1],   // 3: v
+//          solution.x[cte_start + 1], // 4: cte
+//          solution.x[epsi_start + 1],// 5: epsi
+//          solution.x[delta_start],   // 6: delta
+//          solution.x[a_start]};      // 7: a
 }
