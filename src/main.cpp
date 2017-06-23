@@ -174,8 +174,11 @@ int main() {
           vector<double> mpc_x_vals;
           vector<double> mpc_y_vals;
           for(int i=0; i<mpc_points; i++){
-            mpc_x_vals.push_back(vars[i+2]);
-            mpc_y_vals.push_back(vars[i+2+mpc_points]);
+            // only display path points forward of the car
+            if(vars[i+2] > 5.0) {
+              mpc_x_vals.push_back(vars[i + 2]);
+              mpc_y_vals.push_back(vars[i + 2 + mpc_points]);
+            }
           }
 
 
