@@ -6,8 +6,8 @@
 using CppAD::AD;
 
 // TODO: Set the timestep length and duration
-size_t N = 25;
-double dt = 0.1;
+size_t N = 30;
+double dt = 0.03;
 
 // This value assumes the model presented in the classroom is used.
 //
@@ -62,8 +62,13 @@ class FG_eval {
     // CTE, Heading and Velocity targets
     for (int t = 0; t < N; t++) {
 //      fg[0] += 1 * CppAD::pow(vars[cte_start + t], 2);
-      fg[0] += 1 * CppAD::exp(CppAD::pow(vars[cte_start + t], 2)) - 1;
+      // Give some freedom to use the whole track width
+      fg[0] += 1 * CppAD::exp(CppAD::pow(0.7 * vars[cte_start + t], 2)) - 1;
+
+      // Align to the direction of the track
       fg[0] += 10 * CppAD::pow(vars[epsi_start + t], 2);
+
+      // Go FAST!
       fg[0] += 0.25 * CppAD::pow(vars[v_start + t] - ref_v, 2);
     }
 
@@ -79,15 +84,13 @@ class FG_eval {
       fg[0] += 100 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
-    // Maximize Acceleration
-//    for (int t = 0; t < N - 1; t++){
-//      fg[0] += 1000 * CppAD::pow(vars[a_start+t] ,2) + CppAD::pow(0.02*CppAD::pow(vars[v_start+t],2)/Lf * vars[delta_start+t] ,2) - 1;
-//      fg[0] += 10 * CppAD::pow(vars[a_start+t] - 1, 2);
-//    }
-
     // Braking based on corner
+    // If the performance limits of the car were known this could be adjusted such that
+    // Maximum acceleration is always the goal.
+    // Minimize total acceleration
     for (int t = 0; t < N - 1; t++){
-      fg[0] += 0.3 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2);
+      fg[0] += (0.16 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2)  // Lateral Acceleration
+                  + CppAD::pow(vars[v_start + t + 1] - vars[v_start + t], 2));       // Longitudinal Acceleration
     }
 
 
@@ -293,13 +296,4 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     result.push_back(solution.x[i+y_start]);
   }
   return result;
-
-//  return {solution.x[x_start + 1],   // 0: x
-//          solution.x[y_start + 1],   // 1: y
-//          solution.x[psi_start + 1], // 2: psi
-//          solution.x[v_start + 1],   // 3: v
-//          solution.x[cte_start + 1], // 4: cte
-//          solution.x[epsi_start + 1],// 5: epsi
-//          solution.x[delta_start],   // 6: delta
-//          solution.x[a_start]};      // 7: a
 }
