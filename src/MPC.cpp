@@ -89,7 +89,7 @@ class FG_eval {
     // Maximum acceleration is always the goal.
     // Minimize total acceleration
     for (int t = 0; t < N - 1; t++){
-      fg[0] += (0.16 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2)  // Lateral Acceleration
+      fg[0] += (0.17 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2)  // Lateral Acceleration
                   + CppAD::pow(vars[v_start + t + 1] - vars[v_start + t], 2));       // Longitudinal Acceleration
     }
 
