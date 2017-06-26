@@ -5,9 +5,11 @@
 
 using CppAD::AD;
 
-// TODO: Set the timestep length and duration
-size_t N = 30;
-double dt = 0.03;
+// Time steps to predict
+size_t N = 20;
+
+// Step time
+double dt = 0.05;
 
 // This value assumes the model presented in the classroom is used.
 //
@@ -20,11 +22,6 @@ double dt = 0.03;
 //
 // This is the length from front to CoG that has a similar radius.
 const double Lf = 2.67;
-
-// Velocity Target
-// Goal is to remove this and establish a model to maximize
-// actuations within the performance envelope
-double ref_v = 200.0;
 
 // Variable position in solver vector
 size_t x_start = 0;
@@ -47,50 +44,36 @@ class FG_eval {
   // fg contains the cost and constraints
   // vars contains the state and actuations
   void operator()(ADvector& fg, const ADvector& vars) {
-    // TODO: implement MPC
-    // `fg` a vector of the cost constraints, `vars` is a vector of variable values (state & actuators)
-    // NOTE: You'll probably go back and forth between this function and
-    // the Solver function below.
-
     //
     // Cost Functions
     //
 
-    // Cost
+    // Cost, stored at beginning of constraints vector.
     fg[0] = 0;
 
-    // CTE, Heading and Velocity targets
+    // CTE target
     for (int t = 0; t < N; t++) {
-//      fg[0] += 1 * CppAD::pow(vars[cte_start + t], 2);
-      // Give some freedom to use the whole track width
+      // Stay on the track.
+      // This is the cost due to cross track error
+      // Exponential function to give some freedom to use the whole track width.
+      // But be aggressive at the track edge.
       fg[0] += 1 * CppAD::exp(CppAD::pow(0.7 * vars[cte_start + t], 2)) - 1;
-
-      // Align to the direction of the track
-      fg[0] += 10 * CppAD::pow(vars[epsi_start + t], 2);
-
-      // Go FAST!
-      fg[0] += 0.25 * CppAD::pow(vars[v_start + t] - ref_v, 2);
-    }
-
-    // Minimize use of actuators
-    for (int t = 0; t < N - 1; t++) {
-      fg[0] += 500 * CppAD::pow(vars[delta_start + t], 2);
-      fg[0] += 10 * CppAD::pow(vars[a_start + t], 2);
     }
 
     // Minimize jerk
     for (int t = 0; t < N - 2; t++) {
       fg[0] += 1000 * CppAD::pow(vars[delta_start + t + 1] - vars[delta_start + t], 2);
-      fg[0] += 100 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
+      fg[0] += 1000 * CppAD::pow(vars[a_start + t + 1] - vars[a_start + t], 2);
     }
 
-    // Braking based on corner
-    // If the performance limits of the car were known this could be adjusted such that
-    // Maximum acceleration is always the goal.
-    // Minimize total acceleration
+
     for (int t = 0; t < N - 1; t++){
-      fg[0] += (0.17 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2)  // Lateral Acceleration
+      // Minimize acceleration magnitude, turning up the scalar will make the driving more conservative.
+      fg[0] += 3.0*(0.20 * CppAD::pow(CppAD::pow(vars[v_start+t],2)/Lf*vars[delta_start+t], 2)  // Lateral Acceleration
                   + CppAD::pow(vars[v_start + t + 1] - vars[v_start + t], 2));       // Longitudinal Acceleration
+
+      // Go FAST!  Target is full throttle.
+      fg[0] += 100 * CppAD::pow(vars[a_start + t] - 1, 2);
     }
 
 
@@ -138,13 +121,18 @@ class FG_eval {
       fg[1 + psi_start + t] = psi1 - (psi0 + v0 * delta0/Lf * dt);
       fg[1 + v_start + t] = v1 - (v0 + a0 * dt);
 
+      // Common calculations
+      AD<double> x0_2 = x0*x0;
+      AD<double> x0_3 = x0_2*x0;
+
+      // Fit path evaluated at position x0
+      AD<double> f0 = coeffs[3] * x0_3 + coeffs[2] * x0_2 + coeffs[1] * x0 + coeffs[0];
       // Target position from path fit
-      AD<double> f0 = coeffs[3] * x0*x0*x0 + coeffs[2] * x0*x0 + coeffs[1] * x0 + coeffs[0];
       fg[1 + cte_start + t] = cte1 - ((f0 - y0) + v0 * CppAD::sin(epsi0) * dt);
 
-
+      // Derivative of the fit path
+      AD<double> df0 = 3.0*coeffs[3] * x0_2 + 2.0*coeffs[2] * x0 + coeffs[1];
       // Target heading from path fit
-      AD<double> df0 = 3*coeffs[3] * x0*x0 + 2*coeffs[2] * x0 + coeffs[1];
       AD<double> psides0 = CppAD::atan(df0);
       fg[1 + epsi_start + t] = epsi1 - ((psi0 - psides0) + v0 * delta0 / Lf * dt);
     }
@@ -245,9 +233,6 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   // object that computes objective and constraints
   FG_eval fg_eval(coeffs);
 
-  //
-  // NOTE: You don't have to worry about these options
-  //
   // options for IPOPT solver
   std::string options;
   // Uncomment this if you'd like more print information
@@ -278,14 +263,10 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   auto cost = solution.obj_value;
 //  std::cout << "Cost " << cost << std::endl;
 
-  // TODO: Return the first actuator values. The variables can be accessed with
-  // `solution.x[i]`.
-  //
-  // {...} is shorthand for creating a vector, so auto x1 = {1.0,2.0}
-  // creates a 2 element double vector.
-
+  // Add throttle and steering actuations to result vector
   std::vector<double> result = {solution.x[delta_start], solution.x[a_start]};
 
+  // Add visuals
   // Push predicted path x values
   for(int i=0; i < N; i++){
     result.push_back(solution.x[i+x_start]);
