@@ -105,3 +105,5 @@ To simulate a real car where there is latency between an actuation command and t
 
 ## Simulation
 The car can complete the first three laps in the simulator test track in an average lap time of 30.54 seconds. If the simulator was able to provide more points forward of the car, it is likely possible to achieve much lower lap times. However, the car is traveling fast enough that about half the waypoints are lagging behind the car's position such that only 3-4 waypoints are forward of the car.
+
+[![MPC driving in simulator](https://img.youtube.com/vi/9X5v5yPOOws/0.jpg)](https://www.youtube.com/watch?v=9X5v5yPOOws)
