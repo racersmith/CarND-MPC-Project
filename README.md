@@ -1,5 +1,5 @@
-# CarND-Controls-MPC
-Self-Driving Car Engineer Nanodegree Program
+# Model Predictive Control
+Project for Udacity's Self-Driving Car Engineer Nanodegree Program.
 
 ---
 
@@ -44,72 +44,64 @@ Self-Driving Car Engineer Nanodegree Program
 
 ## Basic Build Instructions
 
-
 1. Clone this repo.
 2. Make a build directory: `mkdir build && cd build`
 3. Compile: `cmake .. && make`
 4. Run it: `./mpc`.
 
-## Tips
 
-1. It's recommended to test the MPC on basic examples to see if your implementation behaves as desired. One possible example
-is the vehicle starting offset of a straight line (reference). If the MPC implementation is correct, after some number of timesteps
-(not too many) it should find and track the reference line.
-2. The `lake_track_waypoints.csv` file has the waypoints of the lake track. You could use this to fit polynomials and points and see of how well your model tracks curve. NOTE: This file might be not completely in sync with the simulator so your solution should NOT depend on it.
-3. For visualization this C++ [matplotlib wrapper](https://github.com/lava/matplotlib-cpp) could be helpful.
+#  Rubric
+## Compilation
+Using the basic build instructions above the code compiles and runs.
+```bash
+josh@T7500:~/CarND-MPC-Project$ mkdir build && cd build
+josh@T7500:~/CarND-MPC-Project/build$ cmake .. && make
+-- The C compiler identification is GNU 6.3.0
+-- The CXX compiler identification is GNU 6.3.0
+-- Check for working C compiler: /usr/bin/cc
+-- Check for working C compiler: /usr/bin/cc -- works
+-- Detecting C compiler ABI info
+-- Detecting C compiler ABI info - done
+-- Detecting C compile features
+-- Detecting C compile features - done
+-- Check for working CXX compiler: /usr/bin/c++
+-- Check for working CXX compiler: /usr/bin/c++ -- works
+-- Detecting CXX compiler ABI info
+-- Detecting CXX compiler ABI info - done
+-- Detecting CXX compile features
+-- Detecting CXX compile features - done
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /CarND-MPC-Project/build
+Scanning dependencies of target mpc
+[ 33%] Building CXX object CMakeFiles/mpc.dir/src/MPC.cpp.o
+[ 66%] Building CXX object CMakeFiles/mpc.dir/src/main.cpp.o
+[100%] Linking CXX executable mpc
+[100%] Built target mpc
+josh@T7500:~/CarND-MPC-Project/build$ 
+josh@T7500:~/CarND-MPC-Project/build$ ./mpc
+Listening to port 4567
+```
 
-## Editor Settings
+## Implementation
+### Model
+This MPC uses a kinematic model which takes some tire slip angle into consideration. The model is the familiar bicycle model except for yaw which now accounts for some static normal tire load contributing to yaw rate. Put in other words, there is now a car specific gain/attenuation Lf associated with steering angle that is proportional to the position of the center of gravity relative to the steering wheels. The global kinematic model used is found on lines 119-122 in mpc.cpp. To simplify the constraints of the model, the equations are rearranged to equal zero.
+```
+      0 = x1 - (x0 + v0 * cos(psi0) * dt);
+      0 = y1 - (y0 + v0 * sin(psi0) * dt);
+      0 = psi1 - (psi0 + v0 * delta0/Lf * dt);
+      0 = v1 - (v0 + a0 * dt);
+```
 
-We've purposefully kept editor configuration files out of this repo in order to
-keep it as simple and environment agnostic as possible. However, we recommend
-using the following settings:
+Cross track error, CTE, and heading error psides are evaluated by using the path fit polynomial and it's derivative evaluated at the time step's x position. This can be found on lines 128-137 of mpc.cpp.
+### Hyperparameters
+There are two MPC hyperparameters that are tuned, dt and N, lines 8-12 in mpc.cpp. dt adjusts the time step of the prediction forecast and N sets the number of time steps the MPC forecasts. These parameters were adjusted empirically. The initial values tried were a 0.1s time step with a forecast of 25. This resulted in good results for slower speeds. As the speeds capable increased, the forecast was too far in the future to be reliable and was likely just wasting processing time. A smaller dt was selected and the number of time steps was adjusted to forecast out to the distance of the sensor measurements, which in this simulation was a set of waypoints around the car's position. The final dt selected was 0.05 seconds with a forecast N of 20. The reduction of waypoints to process also decreased computation time and improved simulation behavior. This is likely just a function of my hardware.
 
-* indent using spaces
-* set tab width to 2 spaces (keeps the matrices in source code aligned)
+### Polynomial Fitting
+Before fitting a polynomial to the waypoints the car's state is first updated to handle latency of the system. The waypoints are then transformed to the car's coordinate system, and a third order polynomial is fit.  
 
-## Code Style
+### Model Predictive Control with Latency
+To simulate a real car where there is latency between an actuation command and the physical actuation, 100ms latency was added to the simulation on line 210 of main.cpp. To account for this latency the car's state was estimated after the latency time before being evaluated by the MPC. This resulted in the controller providing actuation command for a future time aligned with the latency. This was done on lines 109-116 of main.cpp. The same kinematic model was used for this prediction as is used in the MPC.
 
-Please (do your best to) stick to [Google's C++ style guide](https://google.github.io/styleguide/cppguide.html).
-
-## Project Instructions and Rubric
-
-Note: regardless of the changes you make, your project must be buildable using
-cmake and make!
-
-More information is only accessible by people who are already enrolled in Term 2
-of CarND. If you are enrolled, see [the project page](https://classroom.udacity.com/nanodegrees/nd013/parts/40f38239-66b6-46ec-ae68-03afd8a601c8/modules/f1820894-8322-4bb3-81aa-b26b3c6dcbaf/lessons/b1ff3be0-c904-438e-aad3-2b5379f0e0c3/concepts/1a2255a0-e23c-44cf-8d41-39b8a3c8264a)
-for instructions and the project rubric.
-
-## Hints!
-
-* You don't have to follow this directory structure, but if you do, your work
-  will span all of the .cpp files here. Keep an eye out for TODOs.
-
-## Call for IDE Profiles Pull Requests
-
-Help your fellow students!
-
-We decided to create Makefiles with cmake to keep this project as platform
-agnostic as possible. Similarly, we omitted IDE profiles in order to we ensure
-that students don't feel pressured to use one IDE or another.
-
-However! I'd love to help people get up and running with their IDEs of choice.
-If you've created a profile for an IDE that you think other students would
-appreciate, we'd love to have you add the requisite profile files and
-instructions to ide_profiles/. For example if you wanted to add a VS Code
-profile, you'd add:
-
-* /ide_profiles/vscode/.vscode
-* /ide_profiles/vscode/README.md
-
-The README should explain what the profile does, how to take advantage of it,
-and how to install it.
-
-Frankly, I've never been involved in a project with multiple IDE profiles
-before. I believe the best way to handle this would be to keep them out of the
-repo root to avoid clutter. My expectation is that most profiles will include
-instructions to copy files to a new location to get picked up by the IDE, but
-that's just a guess.
-
-One last note here: regardless of the IDE used, every submitted project must
-still be compilable with cmake and make./
+## Simulation
+The car can complete the first three laps in the simulator test track in an average lap time of 30.54 seconds. If the simulator was able to provide more points forward of the car, it is likely possible to achieve much lower lap times. However, the car is traveling fast enough that about half the waypoints are lagging behind the car's position such that only 3-4 waypoints are forward of the car.
